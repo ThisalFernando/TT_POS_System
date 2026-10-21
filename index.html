@@ -38,7 +38,9 @@
     <section id="view" class="flex-1 overflow-y-auto p-4 pb-24 opacity-0 transition-opacity duration-200 md:p-6 md:pb-6"></section>
   </main>
 
-  <nav id="bottom-nav" class="fixed inset-x-0 bottom-0 z-30 grid grid-cols-7 border-t border-white/40 bg-white/80 pb-1 backdrop-blur-xl md:hidden dark:border-white/10 dark:bg-slate-900/85"></nav>
+  <!-- <nav id="bottom-nav" class="fixed inset-x-0 bottom-0 z-30 grid grid-cols-7 border-t border-white/40 bg-white/80 pb-1 backdrop-blur-xl md:hidden dark:border-white/10 dark:bg-slate-900/85"></nav> -->
+  <nav id="bottom-nav" style="grid-template-columns:repeat(8,minmax(0,1fr))"
+     class="fixed inset-x-0 bottom-0 z-30 grid border-t border-white/40 bg-white/80 pb-1 backdrop-blur-xl md:hidden dark:border-white/10 dark:bg-slate-900/85"></nav>
 </div>
 
 <!-- Modal host -->
@@ -622,7 +624,8 @@ Views.products = {
   mount() { Views.products.table(); },
   table() {
     const q = S.prodSearch.toLowerCase();
-    const list = S.products.filter((p) => (S.prodCat === 'all' || p.category === S.prodCat) &&
+    const list = S.products.filter((p) => !p.isOrder &&
+      (S.prodCat === 'all' || p.category === S.prodCat) &&
       (!q || [p.name, p.sku, p.barcode].some((v) => String(v || '').toLowerCase().includes(q))));
     $('#prod-table').innerHTML = list.length ? `
       <table class="w-full min-w-[720px] text-sm">
@@ -644,6 +647,183 @@ Views.products = {
           </tr>`).join('')}</tbody></table>` : emptyState(S.products.length ? 'No products match your search.' : 'No products yet. Add your first product to start selling.');
   }
 };
+
+
+/* ---------- Orders Management ---------- */
+
+Views.orders = {
+  title: 'Orders Management',
+
+  render() {
+    return `
+    <div class="${C.card}">
+      <div class="mb-4 flex flex-wrap items-center gap-2">
+        <div class="relative min-w-48 flex-1">
+          <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+            ${icon('search', 'h-4 w-4')}
+          </span>
+          <input id="order-search"
+                 data-input="order-search"
+                 placeholder="Search order name, number or details"
+                 class="${C.input} pl-9">
+        </div>
+
+        <button data-action="open-order" class="${btn('primary')}">
+          ${icon('plus', 'h-4 w-4')} Add order
+        </button>
+      </div>
+
+      <div id="order-table" class="overflow-x-auto"></div>
+    </div>`;
+  },
+
+  mount() {
+    const input = $('#order-search');
+    if (input) input.value = S.orderSearch || '';
+    Views.orders.table();
+  },
+
+  table() {
+    const host = $('#order-table');
+    if (!host) return;
+
+    const q = (S.orderSearch || '').trim().toLowerCase();
+
+    const list = S.products.filter(p =>
+      p.isOrder &&
+      (!q || [p.name, p.sku, p.barcode].some(v =>
+        String(v || '').toLowerCase().includes(q)
+      ))
+    );
+
+    host.innerHTML = list.length ? `
+      <table class="w-full min-w-[680px] text-sm">
+        <thead>
+          <tr>
+            <th class="${C.th}">Order Name</th>
+            <th class="${C.th}">Order Number</th>
+            <th class="${C.th}">Order Details</th>
+            <th class="${C.th} text-right">Selling Price</th>
+            <th class="${C.th}"></th>
+          </tr>
+        </thead>
+        <tbody>
+          ${list.map(p => `
+            <tr class="${C.tr}">
+              <td class="${C.td}">
+                <div class="font-semibold">${esc(p.name)}</div>
+              </td>
+              <td class="${C.td}">${esc(p.sku || '-')}</td>
+              <td class="${C.td}">
+                <div class="max-w-48 whitespace-pre-wrap break-words">
+                  ${esc(p.barcode || '-')}
+                </div>
+              </td>
+              <td class="${C.td} text-right font-semibold">
+                ${fmtN(p.price)}
+              </td>
+              <td class="${C.td}">
+                <div class="flex justify-end gap-1">
+                  <button data-action="open-order"
+                          data-id="${p.id}"
+                          class="rounded-lg p-2 hover:bg-slate-200 dark:hover:bg-slate-700"
+                          aria-label="Edit order">
+                    ${icon('edit', 'h-4 w-4')}
+                  </button>
+                  <button data-action="delete-order"
+                          data-id="${p.id}"
+                          class="rounded-lg p-2 text-red-600 hover:bg-red-100 dark:hover:bg-red-950"
+                          aria-label="Delete order">
+                    ${icon('trash', 'h-4 w-4')}
+                  </button>
+                </div>
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    ` : emptyState(
+      q ? 'No orders match your search.' :
+      'No orders yet. Select Add order to create your first order.'
+    );
+  }
+};
+  
+/* ---------- Add / Edit Order Modal ---------- */
+
+function openOrderModal(id) {
+  const p = S.products.find(x => x.id === id && x.isOrder) || {
+    name: '',
+    sku: '',
+    barcode: '',
+    price: ''
+  };
+
+  UI.openModal(`
+    <div class="mb-4 flex items-center justify-between">
+      <h3 class="text-lg font-bold">
+        ${id ? 'Edit order' : 'Add order'}
+      </h3>
+      <button data-action="close-modal"
+              class="rounded-lg p-2 hover:bg-slate-200 dark:hover:bg-slate-700"
+              aria-label="Close">
+        ${icon('x', 'h-4 w-4')}
+      </button>
+    </div>
+
+    <form data-form="order"
+          data-id="${id || ''}"
+          class="grid grid-cols-2 gap-3">
+
+      <div class="col-span-2">
+        <label class="${C.label}">Order Name *</label>
+        <input name="name"
+               value="${esc(p.name)}"
+               class="${C.input}"
+               required>
+      </div>
+
+      <div class="col-span-2">
+        <label class="${C.label}">Order Number</label>
+        <input name="sku"
+               value="${esc(p.sku)}"
+               placeholder="Auto-generated if empty"
+               class="${C.input}">
+      </div>
+
+      <div class="col-span-2">
+        <label class="${C.label}">Order Details</label>
+        <textarea name="barcode"
+                  rows="5"
+                  class="${C.input}"
+                  placeholder="Enter customer requirements, measurements, delivery details, etc.">${esc(p.barcode)}</textarea>
+      </div>
+
+      <div class="col-span-2">
+        <label class="${C.label}">Selling Price *</label>
+        <input name="price"
+               type="number"
+               min="0"
+               step="0.01"
+               value="${p.price}"
+               class="${C.input}"
+               required>
+      </div>
+
+      <div class="col-span-2 mt-2 flex justify-end gap-2">
+        <button type="button"
+                data-action="close-modal"
+                class="${btn('ghost')}">
+          Cancel
+        </button>
+        <button type="submit" class="${btn('primary')}">
+          Save order
+        </button>
+      </div>
+    </form>
+  `, 'max-w-lg');
+}
+
 
 function openProductModal(id) {
   const p = S.products.find((x) => x.id === id) || { name: '', category: S.categories[0] || '', sku: '', barcode: '', price: '', cost: '', stock: 0, low: 5, service: false, image: '' };
@@ -730,22 +910,89 @@ Views.pos = {
     const all = ['all', ...S.categories];
     $('#pos-cats').innerHTML = all.map((c) => `<button data-action="pos-cat" data-cat="${esc(c)}" class="shrink-0 rounded-full px-4 py-1.5 text-xs font-semibold transition ${S.posCat === c ? 'bg-blue-900 text-white dark:bg-blue-600' : 'bg-slate-200/80 text-slate-700 hover:bg-slate-300 dark:bg-slate-800 dark:text-slate-200'}">${c === 'all' ? 'All' : esc(c)}</button>`).join('');
   },
+  // filtered() {
+  //   const q = S.posSearch.trim().toLowerCase();
+  //   return S.products.filter((p) => (S.posCat === 'all' || p.category === S.posCat) &&
+  //     (!q || [p.name, p.sku, p.barcode].some((v) => String(v || '').toLowerCase().includes(q))));
+  // },
+  
   filtered() {
     const q = S.posSearch.trim().toLowerCase();
-    return S.products.filter((p) => (S.posCat === 'all' || p.category === S.posCat) &&
-      (!q || [p.name, p.sku, p.barcode].some((v) => String(v || '').toLowerCase().includes(q))));
+
+    return S.products.filter(p =>
+      (p.isOrder || S.posCat === 'all' || p.category === S.posCat) &&
+      (!q || [p.name, p.sku, p.barcode].some(v =>
+        String(v || '').toLowerCase().includes(q)
+      ))
+    );
   },
+
+  // grid() {
+  //   const list = Views.pos.filtered();
+  //   $('#pos-grid').innerHTML = list.length ? list.map((p) => {
+  //     const out = !p.service && p.stock <= 0;
+  //     return `<button data-action="add-cart" data-id="${p.id}" ${out ? 'disabled' : ''} class="flex flex-col overflow-hidden rounded-2xl border border-white/60 bg-white/80 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg active:scale-95 disabled:opacity-40 dark:border-white/10 dark:bg-slate-900/70">
+  //       ${p.image ? `<img src="${p.image}" alt="" class="h-24 w-full object-cover">` : `<div class="flex h-24 w-full items-center justify-center bg-gradient-to-br from-blue-950 to-blue-600 text-3xl font-bold text-white">${esc(p.name.charAt(0).toUpperCase())}</div>`}
+  //       <div class="p-3"><div class="truncate text-sm font-semibold">${esc(p.name)}</div>
+  //         <div class="mt-0.5 text-sm font-bold text-blue-900 dark:text-blue-300">${fmt(p.price)}</div>
+  //         <div class="mt-1 text-xs ${isLow(p) ? 'font-semibold text-red-600' : 'text-slate-500 dark:text-slate-400'}">${p.service ? 'Service' : out ? 'Out of stock' : `Stock: ${p.stock}`}</div></div></button>`;
+  //   }).join('') : `<div class="col-span-full">${emptyState(S.products.length ? 'No products match. Try another search or category.' : 'No products yet. Add some under Products.')}</div>`;
+  // },
+
+  
   grid() {
     const list = Views.pos.filtered();
-    $('#pos-grid').innerHTML = list.length ? list.map((p) => {
-      const out = !p.service && p.stock <= 0;
-      return `<button data-action="add-cart" data-id="${p.id}" ${out ? 'disabled' : ''} class="flex flex-col overflow-hidden rounded-2xl border border-white/60 bg-white/80 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg active:scale-95 disabled:opacity-40 dark:border-white/10 dark:bg-slate-900/70">
-        ${p.image ? `<img src="${p.image}" alt="" class="h-24 w-full object-cover">` : `<div class="flex h-24 w-full items-center justify-center bg-gradient-to-br from-blue-950 to-blue-600 text-3xl font-bold text-white">${esc(p.name.charAt(0).toUpperCase())}</div>`}
-        <div class="p-3"><div class="truncate text-sm font-semibold">${esc(p.name)}</div>
-          <div class="mt-0.5 text-sm font-bold text-blue-900 dark:text-blue-300">${fmt(p.price)}</div>
-          <div class="mt-1 text-xs ${isLow(p) ? 'font-semibold text-red-600' : 'text-slate-500 dark:text-slate-400'}">${p.service ? 'Service' : out ? 'Out of stock' : `Stock: ${p.stock}`}</div></div></button>`;
-    }).join('') : `<div class="col-span-full">${emptyState(S.products.length ? 'No products match. Try another search or category.' : 'No products yet. Add some under Products.')}</div>`;
+
+    $('#pos-grid').innerHTML = list.length ? list.map(p => {
+      const out = !p.isOrder && !p.service && p.stock <= 0;
+
+      return `
+        <button data-action="add-cart"
+                data-id="${p.id}"
+                ${out ? 'disabled' : ''}
+                class="flex flex-col overflow-hidden rounded-2xl border border-white/60 bg-white/80 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg active:scale-95 disabled:opacity-40 dark:border-white/10 dark:bg-slate-900/70">
+
+          ${p.image
+            ? `<img src="${p.image}" alt="" class="h-24 w-full object-cover">`
+            : `<div class="flex h-24 w-full items-center justify-center bg-gradient-to-br from-blue-950 to-blue-600 text-3xl font-bold text-white">${p.isOrder ? 'ORD' : esc(p.name.charAt(0).toUpperCase())}</div>`
+          }
+
+          <div class="p-3">
+            <div class="truncate text-sm font-semibold">
+              ${esc(p.name)}
+            </div>
+
+            <div class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+              ${p.isOrder
+                ? `Order No: ${esc(p.sku)}`
+                : esc(p.sku || '')
+              }
+            </div>
+
+            // Newly Added
+            ${p.isOrder && p.barcode ? `
+            <div class="mt-1 line-clamp-2 whitespace-pre-wrap break-words text-xs text-slate-600 dark:text-slate-300">
+              ${esc(p.barcode)}
+            </div>
+          ` : ''}
+
+            <div class="mt-1 text-sm font-bold text-blue-900 dark:text-blue-300">
+              ${fmt(p.price)}
+            </div>
+
+            <div class="mt-1 text-xs ${p.isOrder ? 'font-semibold text-blue-900 dark:text-blue-300' : isLow(p) ? 'font-semibold text-red-600' : 'text-slate-500 dark:text-slate-400'}">
+              ${p.isOrder ? 'Order' : p.service ? 'Service' : out ? 'Out of stock' : `Stock: ${p.stock}`}
+            </div>
+          </div>
+        </button>`;
+    }).join('') : `
+      <div class="col-span-full">
+        ${emptyState(
+          'No matching products or orders. Try another search.'
+        )}
+      </div>`;
   },
+
   cartItems() {
     $('#cart-items').innerHTML = S.cart.length ? S.cart.map((l) => `
       <div class="flex items-center gap-2 rounded-2xl bg-white/70 p-2.5 dark:bg-white/5">
@@ -954,7 +1201,17 @@ Views.data = {
 /* ==========================================================================
    10. NAVIGATION, HEADER, THEME
    ========================================================================== */
-const NAV = [['dashboard', 'Dashboard', 'dashboard'], ['pos', 'POS', 'pos'], ['products', 'Products', 'box'], ['sales', 'Sales', 'history'], ['reports', 'Reports', 'chart'], ['data', 'Backup', 'data'], ['settings', 'Settings', 'settings']];
+// const NAV = [['dashboard', 'Dashboard', 'dashboard'], ['pos', 'POS', 'pos'], ['products', 'Products', 'box'], ['sales', 'Sales', 'history'], ['reports', 'Reports', 'chart'], ['data', 'Backup', 'data'], ['settings', 'Settings', 'settings']];
+const NAV = [
+  ['dashboard', 'Dashboard', 'dashboard'],
+  ['pos', 'POS', 'pos'],
+  ['products', 'Products', 'box'],
+  ['orders', 'Orders', 'receipt'],
+  ['sales', 'Sales', 'history'],
+  ['reports', 'Reports', 'chart'],
+  ['data', 'Backup', 'data'],
+  ['settings', 'Settings', 'settings']
+];
 
 function renderNav() {
   $('#side-nav').innerHTML = NAV.map(([id, label, ic], i) => `
@@ -1028,6 +1285,53 @@ const Actions = {
     S.products.splice(idx, 1); S.cart = S.cart.filter((l) => l.id !== p.id); persist.products(); persist.cart();
     Views.products.table();
     UI.toast(`Deleted ${p.name}`, 'info', { label: 'Undo', fn: () => { S.products.splice(Math.min(idx, S.products.length), 0, p); persist.products(); if (S.view === 'products') Views.products.table(); UI.toast('Product restored'); } });
+  },
+  
+  /* Orders management */
+  'open-order': (t) => openOrderModal(t.dataset.id),
+
+  'delete-order': async (t) => {
+    const idx = S.products.findIndex(p =>
+      p.id === t.dataset.id && p.isOrder
+    );
+
+    if (idx < 0) return;
+
+    const order = S.products[idx];
+
+    if (!(await UI.confirm({
+      title: 'Delete order?',
+      message: `"${order.name}" (${order.sku}) will be removed.`,
+      confirmText: 'Delete order'
+    }))) return;
+
+    S.products.splice(idx, 1);
+
+    // Remove this order from an uncompleted cart, if present.
+    S.cart = S.cart.filter(item => item.id !== order.id);
+
+    persist.products();
+    persist.cart();
+
+    if (S.view === 'orders') Views.orders.table();
+    if (S.view === 'pos') {
+      Views.pos.grid();
+      Views.pos.cartItems();
+      Views.pos.totals();
+    }
+
+    UI.toast(`Deleted order ${order.sku}`, 'info', {
+      label: 'Undo',
+      fn: () => {
+        S.products.splice(Math.min(idx, S.products.length), 0, order);
+        persist.products();
+
+        if (S.view === 'orders') Views.orders.table();
+        if (S.view === 'pos') Views.pos.grid();
+
+        UI.toast('Order restored');
+      }
+    });
   },
   'manage-categories': () => openCategoryModal(),
   'delete-category': async (t) => {
@@ -1136,6 +1440,81 @@ const Forms = {
     persist.products(); UI.closeModal(); UI.toast(id ? 'Product updated' : 'Product added');
     if (S.view === 'products') Views.products.table(); if (S.view === 'pos') Views.pos.grid();
   },
+  
+  order(f) {
+    const id = f.dataset.id;
+    const g = name => f.elements[name].value.trim();
+
+    const name = g('name');
+    if (!name) {
+      return UI.toast('Order name is required', 'error');
+    }
+
+    const priceValue = g('price');
+    if (priceValue === '' || !Number.isFinite(Number(priceValue)) ||
+        Number(priceValue) < 0) {
+      return UI.toast('Enter a valid selling price', 'error');
+    }
+
+    let orderNo = g('sku');
+
+    if (!orderNo) {
+      let next = 1;
+      do {
+        orderNo = `ORD-${String(next++).padStart(5, '0')}`;
+      } while (S.products.some(p =>
+        p.isOrder && p.sku === orderNo
+      ));
+    }
+
+    const duplicate = S.products.find(p =>
+      p.isOrder &&
+      p.id !== id &&
+      p.sku.toLowerCase() === orderNo.toLowerCase()
+    );
+
+    if (duplicate) {
+      return UI.toast('That order number is already in use', 'error');
+    }
+
+    const data = {
+      name,
+      category: '',
+      sku: orderNo,
+      barcode: g('barcode'),
+      price: r2(Number(priceValue)),
+      cost: 0,
+      stock: 0,
+      low: 0,
+      service: true,
+      image: '',
+      isOrder: true
+    };
+
+    if (id) {
+      const existing = S.products.find(p =>
+        p.id === id && p.isOrder
+      );
+
+      if (!existing) {
+        return UI.toast('Order not found', 'error');
+      }
+
+      Object.assign(existing, data);
+    } else {
+      S.products.unshift({
+        id: uid(),
+        ...data
+      });
+    }
+
+    persist.products();
+    UI.closeModal();
+    UI.toast(id ? 'Order updated' : 'Order added');
+
+    if (S.view === 'orders') Views.orders.table();
+    if (S.view === 'pos') Views.pos.grid();
+  },
   category(f) {
     const name = f.elements.name.value.trim();
     if (!name) return;
@@ -1201,11 +1580,16 @@ const FileInputs = {
    ========================================================================== */
 const refreshPosGrid = debounce(() => Views.pos.grid(), 80);
 const refreshProdTable = debounce(() => Views.products.table(), 80);
+const refreshOrderTable = debounce(() => Views.orders.table(), 80);
 const refreshSalesTable = debounce(() => Views.sales.table(), 120);
 
 const Inputs = {
   'pos-search': (el) => { S.posSearch = el.value; refreshPosGrid(); },
   'prod-search': (el) => { S.prodSearch = el.value; refreshProdTable(); },
+  'order-search': (el) => {
+    S.orderSearch = el.value;
+    refreshOrderTable();
+  },
   'prod-cat': (el) => { S.prodCat = el.value; Views.products.table(); },
   'sf-inv': (el) => { S.salesFilter.inv = el.value; refreshSalesTable(); },
   'sf-date': (el) => { S.salesFilter.date = el.value; refreshSalesTable(); },
