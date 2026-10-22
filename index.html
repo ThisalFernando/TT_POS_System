@@ -843,7 +843,7 @@ function openOrderModal(id) {
             <input
               type="file"
               accept="image/*"
-              data-file="order-image"
+              data-change="order-image"
               class="${C.input}"
             >
             <p class="${C.muted} mt-1 text-xs">
@@ -1586,7 +1586,7 @@ const FileInputs = {
     catch (e) { UI.toast('Could not read that image', 'error'); }
   },
   async 'order-image'(input) {
-    const file = input.files[0];
+    const file = input.files?.[0];
     if (!file) return;
   
     if (!file.type.startsWith('image/')) {
@@ -1595,14 +1595,18 @@ const FileInputs = {
     }
   
     try {
-      S.tempImage = await readImage(file, 240);
+      const image = await readImage(file, 240);
   
-      const img = $('#order-image-preview');
-      if (img) {
-        img.src = S.tempImage;
-        img.classList.remove('hidden');
+      S.tempImage = image;
+  
+      const preview = $('#order-image-preview');
+  
+      if (preview) {
+        preview.src = image;
+        preview.classList.remove('hidden');
       }
-    } catch (e) {
+    } catch (error) {
+      console.error('Order image upload failed:', error);
       UI.toast('Could not read that image', 'error');
     }
   },
