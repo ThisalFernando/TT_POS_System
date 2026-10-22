@@ -700,6 +700,7 @@ Views.orders = {
       <table class="w-full min-w-[680px] text-sm">
         <thead>
           <tr>
+            <th class="${C.th}">Image</th>
             <th class="${C.th}">Order Name</th>
             <th class="${C.th}">Order Number</th>
             <th class="${C.th}">Order Details</th>
@@ -710,6 +711,19 @@ Views.orders = {
         <tbody>
           ${list.map(p => `
             <tr class="${C.tr}">
+              <td class="${C.td}">
+                ${
+                  p.image
+                    ? `<img
+                         src="${p.image}"
+                         alt="${esc(p.name)}"
+                         class="h-12 w-12 rounded-xl object-cover border border-slate-200 dark:border-slate-700"
+                       >`
+                    : `<span class="flex h-12 w-12 items-center justify-center rounded-xl bg-slate-100 text-slate-400 dark:bg-slate-800">
+                         ${icon('image', 'h-5 w-5')}
+                       </span>`
+                }
+              </td>
               <td class="${C.td}">
                 <div class="font-semibold">${esc(p.name)}</div>
               </td>
@@ -752,12 +766,16 @@ Views.orders = {
 /* ---------- Add / Edit Order Modal ---------- */
 
 function openOrderModal(id) {
-  const p = S.products.find(x => x.id === id && x.isOrder) || {
+ const p = S.products.find(x => x.id === id && x.isOrder) || {
     name: '',
     sku: '',
     barcode: '',
-    price: ''
+    price: '',
+    image: ''
   };
+
+  // Keep the existing order image when editing
+  S.tempImage = p.image || '';
 
   UI.openModal(`
     <div class="mb-4 flex items-center justify-between">
@@ -776,7 +794,7 @@ function openOrderModal(id) {
           class="grid grid-cols-2 gap-3">
 
       <div class="col-span-2">
-        <label class="${C.label}">Order Name *</label>
+        <label class="${C.label}">Customer Name *</label>
         <input name="name"
                value="${esc(p.name)}"
                class="${C.input}"
@@ -808,6 +826,31 @@ function openOrderModal(id) {
                value="${p.price}"
                class="${C.input}"
                required>
+      </div>
+
+      <div class="col-span-2">
+        <label class="${C.label}">Order Image</label>
+      
+        <div class="flex items-center gap-3">
+          <img
+            id="order-image-preview"
+            alt="Order image preview"
+            class="${S.tempImage ? '' : 'hidden'} h-16 w-16 rounded-xl object-cover border border-slate-200 dark:border-slate-700"
+            src="${S.tempImage}"
+          >
+      
+          <div class="flex-1">
+            <input
+              type="file"
+              accept="image/*"
+              data-file="order-image"
+              class="${C.input}"
+            >
+            <p class="${C.muted} mt-1 text-xs">
+              Choose an image for this order.
+            </p>
+          </div>
+        </div>
       </div>
 
       <div class="col-span-2 mt-2 flex justify-end gap-2">
@@ -1486,7 +1529,7 @@ const Forms = {
       stock: 0,
       low: 0,
       service: true,
-      image: '',
+      image: S.tempImage || '',
       isOrder: true
     };
 
@@ -1541,6 +1584,27 @@ const FileInputs = {
     const file = input.files[0]; if (!file) return;
     try { S.tempImage = await readImage(file, 240); const img = $('#product-image-preview'); img.src = S.tempImage; img.classList.remove('hidden'); }
     catch (e) { UI.toast('Could not read that image', 'error'); }
+  },
+  async 'order-image'(input) {
+    const file = input.files[0];
+    if (!file) return;
+  
+    if (!file.type.startsWith('image/')) {
+      input.value = '';
+      return UI.toast('Please select an image file', 'error');
+    }
+  
+    try {
+      S.tempImage = await readImage(file, 240);
+  
+      const img = $('#order-image-preview');
+      if (img) {
+        img.src = S.tempImage;
+        img.classList.remove('hidden');
+      }
+    } catch (e) {
+      UI.toast('Could not read that image', 'error');
+    }
   },
   async 'import-products'(input) {
     const file = input.files[0]; input.value = ''; if (!file) return;
